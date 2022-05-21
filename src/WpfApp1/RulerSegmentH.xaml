@@ -1,0 +1,22 @@
+﻿<UserControl 
+	x:Class="WpfApp1.RulerSegmentH"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+	xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+	xmlns:local="clr-namespace:WpfApp1"
+	mc:Ignorable="d" 
+	>
+    <Grid Width="1cm">
+		<Line Y2="10" X1="0.0cm" X2="0.0cm" StrokeThickness="1" Stroke="Black"/>
+		<Line Y2="3" X1="0.1cm" X2="0.1cm" StrokeThickness="1" Stroke="Black"/>
+		<Line Y2="3" X1="0.2cm" X2="0.2cm" StrokeThickness="1" Stroke="Black"/>
+		<Line Y2="3" X1="0.3cm" X2="0.3cm" StrokeThickness="1" Stroke="Black"/>
+		<Line Y2="3" X1="0.4cm" X2="0.4cm" StrokeThickness="1" Stroke="Black"/>
+		<Line Y2="5" X1="0.5cm" X2="0.5cm" StrokeThickness="1" Stroke="Black"/>
+		<Line Y2="3" X1="0.6cm" X2="0.6cm" StrokeThickness="1" Stroke="Black"/>
+		<Line Y2="3" X1="0.7cm" X2="0.7cm" StrokeThickness="1" Stroke="Black"/>
+		<Line Y2="3" X1="0.8cm" X2="0.8cm" StrokeThickness="1" Stroke="Black"/>
+		<Line Y2="3" X1="0.9cm" X2="0.9cm" StrokeThickness="1" Stroke="Black"/>
+    </Grid>
+</UserControl>
