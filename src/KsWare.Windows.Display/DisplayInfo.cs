@@ -8,104 +8,16 @@ using static KsWare.Windows.Native;
 
 namespace KsWare.Windows {
 
-	public class DisplayInfo {
+	public partial class DisplayInfo {
 		// analog to System.Windows.Forms.Screen https://docs.microsoft.com/en-us/dotnet/api/system.windows.forms.screen?view=windowsdesktop-6.0
 
-		#region Static
-
-		public static DisplayInfo[] GetAllDisplays() {
-			var displays = new List<DisplayInfo>();
-
-			var devices = new List<DISPLAY_DEVICE>();
-			{
-				var d = new DISPLAY_DEVICE();
-				d.cb = Marshal.SizeOf(d);
-				for (uint id = 0; EnumDisplayDevices(null, id, ref d, 0); id++) {
-					// Debug.WriteLine($"{id}, {d.DeviceName}, {d.DeviceString}, {d.StateFlags}, {d.DeviceID}, {d.DeviceKey}");
-					devices.Add(d);
-					d = new DISPLAY_DEVICE();
-					d.cb = Marshal.SizeOf(d);
-				}
-			}
-
-			var vDevMode = DEVMODE.Create();
-			foreach (var displayDevice in devices.Where(d => (int) (d.StateFlags & DisplayDeviceStateFlags.AttachedToDesktop) > 0)) {
-				var di = new DisplayInfo();
-				di.Import(displayDevice);
-				EnumDisplaySettings(displayDevice.DeviceName, ENUM_CURRENT_SETTINGS, ref vDevMode);
-				di.Import(vDevMode);
-				di.ImportDpi();
-				di.ImportMonitorInfoEx();
-
-				displays.Add(di);
-			}
-
-			return displays.ToArray();
+		public DisplayInfo() {
+			
 		}
 
-		// public static DisplayInfo FromControl(Control control);
-
-		// public static DisplayInfo FromHandle(IntPtr hwnd);
-
-		// public static DisplayInfo FromPoint(System.Drawing.Point point);
-
-		// TODO continue here
-		public DisplayInfo FromRectangle(Rectangle rect) {
-			var r = RECT.From(rect);
-			var hMonitor = MonitorFromRect(RECT.From(rect), MONITOR_DEFAULTTONULL);
-			var allDisplayes = GetAllDisplays();
-			allDisplayes.First(d => d.MonitorHandle == hMonitor);
-			return null;
-		}
-
-		public static DisplayInfo[] AllFromRect(Rectangle rect) {
-			var r=RECT.From(rect);
-			var allDisplayes = GetAllDisplays();
-			var result = new List<DisplayInfo>();
-			Native.EnumDisplayMonitors(IntPtr.Zero, ref r,
-				delegate (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor,  IntPtr dwData) {
-					// var d = allDisplayes.First(d => d.MonitorHandle == hMonitor);
-					// result.Add(d);
-					var mi = new MONITORINFOEX();
-					mi.Size = Marshal.SizeOf(mi);
-					GetMonitorInfo(hMonitor, ref mi);
-					return true;
-				}, IntPtr.Zero );
-			return result.ToArray();
-		}
-
-		// public static Rectangle GetBounds(Control ctl);
-
-		// public static Rectangle GetBounds(Point pt);
-
-		// public static Rectangle GetBounds(Rectangle r)
-
-		public static DisplayInfo GetPrimaryDisplay() => GetAllDisplays().First(d => d.IsPrimary);
-
-		public static bool IsCompleteOnVirtualDisplay(Window w) {
-			var r = Native.GetWindowPlacement(w).NormalPosition;
-			var windowBounds = new Rectangle(r.Left, r.Top, r.Width, r.Height);
-			return IsCompleteOnVirtualDisplay(windowBounds);
-		}
-
-		public static bool IsCompleteOnVirtualDisplay(Rectangle rectangle) {
-			var displays = GetAllDisplays();
-			var windowBounds = new Rect(rectangle.Left, rectangle.Top, rectangle.Width, rectangle.Height);
-			var windowArea = (double) windowBounds.Width * windowBounds.Height;
-			var visibleArea = (double) 0.0;
-			foreach (var display in displays) {
-				var screenBounds = new Rect(display.Bounds.X, display.Bounds.Y, display.Bounds.Width,
-					display.Bounds.Height);
-				var intersect = windowBounds;
-				intersect.Intersect(screenBounds);
-				visibleArea += (double) intersect.Width * intersect.Height;
-			}
-
-			var visibleAreaPercent = 100.0 / windowArea * visibleArea;
-			return visibleAreaPercent > 99.0;
-		}
-
-		#endregion Static
+		/// <summary>Gets a value indicating whether the display settings changed since last update of th is instance.</summary>
+		/// <value>   <c>true</c> if display settings changed; otherwise, <c>false</c>.</value>
+		public bool HaveDisplaySettingsChanged { get; internal set; } 
 
 		public string DeviceName { get; private set; } // \\.\DISPLAY1
 
@@ -123,41 +35,94 @@ namespace KsWare.Windows {
 
 		public int EffectiveDpiY { get; private set; }
 
+		/// <summary>
+		/// Gets the working area.
+		/// A <see cref="Rectangle"/> that specifies the work area rectangle of the display monitor, expressed in virtual-screen coordinates.
+		/// </summary>
+		/// <value>The working area.</value>
+		/// <remarks>Note that if the monitor is not the primary display monitor, some of the rectangle's coordinates may be negative values.</remarks>
 		public Rectangle WorkingArea { get; private set; }
 
 		internal IntPtr MonitorHandle { get; private set; }
+
+		/// <summary>
+		/// Gets the name of the monitor.
+		/// </summary>
+		/// <value>The name of the monitor or "MultiMonitor".</value>
+		public string MonitorName { get; private set; }
+
+		/// <summary>
+		/// Gets the monitor information.
+		/// </summary>
+		/// <value>The monitor information.</value>
+		public MonitorInfo[] MonitorInfo { get; private set; }
 
 		internal void Import(DISPLAY_DEVICE displayDevice) {
 			DeviceName = displayDevice.DeviceName;
 			IsPrimary = (int) (displayDevice.StateFlags & DisplayDeviceStateFlags.PrimaryDevice) != 0;
 		}
 
-		internal void Import(DEVMODE devMode) {
+		internal void ImportDisplaySettings() {
+			var devMode = Native.DEVMODE.Create();
+			Native.EnumDisplaySettings(DeviceName, Native.ENUM_CURRENT_SETTINGS, ref devMode);
 			Bounds = new Rectangle(devMode.dmPositionX, devMode.dmPositionY, devMode.dmPelsWidth, devMode.dmPelsHeight);
 			Frequency = devMode.dmDisplayFrequency;
 			Orientation = devMode.dmDisplayOrientation;
 		}
 
-		internal void ImportMonitorInfoEx() {
+		internal void UpdateMonitorDevices() {
+			var devices = new List<DISPLAY_DEVICE>();
+			var dd = DISPLAY_DEVICE.New();
+			for (uint monitorIndex = 0; EnumDisplayDevices(DeviceName, monitorIndex, ref dd, 0); monitorIndex++) {
+				// Debug.WriteLine($"    {monitorIndex}, {dd.DeviceName}, {dd.DeviceString}, {dd.StateFlags}, {dd.DeviceID}, {dd.DeviceKey}");
+				devices.Add(dd);
+				dd = DISPLAY_DEVICE.New();
+			}
+
+			if (devices.Count == 1) {
+				MonitorName = devices[0].DeviceString;
+			}
+			else if (devices.Count > 1) {
+				MonitorName = "MultiMonitor";
+			}
+
+			MonitorInfo = devices.Select(Windows.MonitorInfo.From).ToArray();
+		}
+
+		internal void ImportMonitorInfoEx(){
 			if (MonitorHandle == IntPtr.Zero) MonitorHandle = MonitorFromPoint(Bounds.Location, MONITOR_DEFAULTTONULL);
 			if (MonitorHandle == IntPtr.Zero) return;
-			var mi = new MONITORINFOEX();
-			mi.Size = Marshal.SizeOf(mi);
-			bool success = GetMonitorInfo(MonitorHandle, ref mi);
-			if (success) {
-				DisplayInfo di = new DisplayInfo();
-				//di.MonitorArea = mi.Monitor;
+			using (DpiBehavior.SetThreadDpiPerMonitorAwareV2()) {
+				var mi = new MONITORINFOEX();
+				mi.Size = Marshal.SizeOf(mi);
+				bool success = GetMonitorInfo(MonitorHandle, ref mi);
+				if (!success) return;
+
+				_ = mi.Monitor;		// 
 				WorkingArea = mi.WorkArea;
+				_ = mi.Flags;		// 1 = MONITORINFOF_PRIMARY
+				_ = mi.DeviceName;	// \\.\DISPLAY4
 				//Availability = mi.flags.ToString();
 			}
 		}
 
 		internal void ImportDpi() {
+			// TODO
+
+			// GetDpiFoThis API is not DPI aware and should not be used if the calling thread is per-monitor DPI aware.
+			// For the DPI-aware version of this API, see GetDpiForWindow.
 			if (MonitorHandle == IntPtr.Zero) MonitorHandle = MonitorFromPoint(Bounds.Location, MONITOR_DEFAULTTONULL);
 			if (MonitorHandle == IntPtr.Zero) return;
 			GetDpiForMonitor(MonitorHandle, Native.MONITOR_DPI_TYPE.EFFECTIVE_DPI, out var dpiX, out var dpiY);
 			EffectiveDpiX = (int) dpiX;
 			EffectiveDpiY = (int) dpiY;
+		}
+
+
+
+		internal void NotifyDisplaySettingsChanged() {
+			HaveDisplaySettingsChanged = true;
+			Array.ForEach(MonitorInfo,mi=>mi.NotifyDisplaySettingsChanged());
 		}
 	}
 }

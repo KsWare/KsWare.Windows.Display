@@ -1,38 +1,78 @@
 ﻿using System;
-using static KsWare.Windows.Native;
+using KsWare.Windows.Internal;
 
 namespace KsWare.Windows {
 
-	internal class DpiBehavior {
+	// https://mariusbancila.ro/blog/2021/05/19/how-to-build-high-dpi-aware-native-desktop-applications/
 
-		private static DpiBehavior _backup;
+	// https://docs.microsoft.com/en-us/windows/win32/hidpi/setting-the-default-dpi-awareness-for-a-process
+	
+	public sealed class DpiBehavior : IDisposable {
 
-		private DPI_HOSTING_BEHAVIOR _prevHosting;
-		private DPI_AWARENESS_CONTEXT _prevDpiContext;
-			
-		public static DpiBehavior SetPerMonitorAwareV2() {
-			if (!IsWindows10Build1809OrNewer)
-				throw new PlatformNotSupportedException("This function s needs Windows 10.18090 or newer.");
-			// https://github.com/microsoft/Windows-classic-samples/blob/master/Samples/DPIAwarenessPerWindow/client/DpiAwarenessContext.cpp
-			_backup = new DpiBehavior() {
-				_prevHosting = SetThreadDpiHostingBehavior(DPI_HOSTING_BEHAVIOR.MIXED),
-				_prevDpiContext = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT.PER_MONITOR_AWARE_V2)
-			};
-			Console.WriteLine(NormalizeThreadDpiAwarenessContext(_backup._prevDpiContext));
-				
-			return _backup;
-
+		/// <summary>
+		/// Sets the process-default DPI awareness level. 
+		/// </summary>
+		/// <param name="dac">The DPI awareness level</param>
+		/// <remarks>
+		/// <para>It is recommended that you set the process-default DPI awareness via application manifest. See <see href="https://docs.microsoft.com/en-us/windows/win32/hidpi/setting-the-default-dpi-awareness-for-a-process">Setting the default DPI awareness</see> for a process for more information. Setting the process-default DPI awareness via API call can lead to unexpected application behavior.</para>
+		/// </remarks>
+		/// <seealso href="https://docs.microsoft.com/en-us/windows/win32/hidpi/setting-the-default-dpi-awareness-for-a-process">Setting the default DPI awareness for a process.</seealso>
+		public static void SetProcessDpiAwareness(DpiAwarenessContext dac) {
+			Native.SetProcessDpiAwareness((IntPtr)dac);
 		}
 
+		/// <summary>
+		/// Retrieves the <see cref="DpiHostingBehavior"/> from the current thread.
+		/// </summary>
+		/// <returns>The <see cref="DpiHostingBehavior"/> of the current thread.</returns>
+		/// <remarks>This API returns the hosting behavior set by an earlier call of <see cref="SetThreadDpiHostingBehavior"/>, or <see cref="DpiHostingBehavior.Default"/> if no earlier call has been made.</remarks>
+		public static DpiHostingBehavior GetThreadDpiHostingBehavior() {
+			return (DpiHostingBehavior) (int) Native.GetThreadDpiHostingBehavior();
+		}
+
+		public static DpiHostingBehavior SetThreadDpiHostingBehavior(DpiHostingBehavior behavior) {
+			return (DpiHostingBehavior)Native.SetThreadDpiHostingBehavior((Native.DPI_HOSTING_BEHAVIOR) behavior);
+		}
+
+		public static DpiAwarenessContext GetThreadDpiAwarenessContext() {
+			return (DpiAwarenessContext) Native.GetThreadDpiAwarenessContext(true);
+		}
+
+		public static DpiBehavior SetThreadDpiAwarenessContext(DpiAwarenessContext context) {
+			if (!WinVer.IsWindows10v1803OrNewer) throw new PlatformNotSupportedException("This function s needs Windows 10 build 1803 or newer.");
+			// https://github.com/microsoft/Windows-classic-samples/blob/master/Samples/DPIAwarenessPerWindow/client/DpiAwarenessContext.cpp
+			var backup = new DpiBehavior {
+				_prevBehavior = Native.SetThreadDpiHostingBehavior(Native.DPI_HOSTING_BEHAVIOR.MIXED),
+				_prevDpiContext = Native.SetThreadDpiAwarenessContext((Native.DPI_AWARENESS_CONTEXT)context)
+			};
+				
+			return backup;
+		}
+
+		public static DpiBehavior SetThreadDpiPerMonitorAwareV2() {
+
+			if (!WinVer.IsWindows10v1803OrNewer) throw new PlatformNotSupportedException("This function s needs Windows 10 build 1809 or newer.");
+			// https://github.com/microsoft/Windows-classic-samples/blob/master/Samples/DPIAwarenessPerWindow/client/DpiAwarenessContext.cpp
+			var backup = new DpiBehavior {
+				_prevBehavior = Native.SetThreadDpiHostingBehavior(Native.DPI_HOSTING_BEHAVIOR.MIXED),
+				_prevDpiContext = Native.SetThreadDpiAwarenessContext(Native.DPI_AWARENESS_CONTEXT.PER_MONITOR_AWARE_V2)
+			};
+			return backup;
+		}
+
+		private Native.DPI_HOSTING_BEHAVIOR? _prevBehavior;
+		private Native.DPI_AWARENESS_CONTEXT? _prevDpiContext;
+
 		public void Restore() {
-			if (IsWindows10Build1809OrNewer) {
-				SetThreadDpiAwarenessContext(_prevDpiContext);
-				SetThreadDpiHostingBehavior(_prevHosting);
+			if (WinVer.IsWindows10v1803OrNewer) {
+				if(_prevDpiContext.HasValue) Native.SetThreadDpiAwarenessContext(_prevDpiContext.Value);
+				if(_prevBehavior.HasValue) Native.SetThreadDpiHostingBehavior(_prevBehavior.Value);
 			}
 		}
 
-		private static bool IsWindows10Build1809OrNewer => IsWindows10OrNewer && Environment.OSVersion.Version.Build >= 17763;
+		
+		void IDisposable.Dispose() => Restore();
 
-		private static bool IsWindows10OrNewer => Environment.OSVersion.Version >= new Version(10, 0);
 	}
+
 }

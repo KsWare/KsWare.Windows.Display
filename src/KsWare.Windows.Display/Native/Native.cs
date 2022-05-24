@@ -41,6 +41,29 @@ namespace KsWare.Windows {
 			return result.ToArray();
 		}
 
+		internal static EnumDisplayMonitorResult[] GetDisplayMonitors(bool fillMonitorInfo=true) {
+			var result = new List<EnumDisplayMonitorResult>();
+			Native.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero,
+				delegate (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor,  IntPtr dwData) {
+					var r = new EnumDisplayMonitorResult();
+					r.MonitorHandle=hMonitor;
+					r.MonitorDC = hdcMonitor;
+					r.Rect = lprcMonitor;
+					if (fillMonitorInfo) {
+						var mi = new MONITORINFOEX();
+						mi.Size = Marshal.SizeOf(mi);
+						GetMonitorInfo(hMonitor, ref mi);
+						r.DeviceName=mi.DeviceName;
+						r.Flags=mi.Flags;
+						r.Monitor=mi.Monitor;
+						r.WorkArea=mi.WorkArea;
+					}
+					result.Add(r);
+					return true;
+				}, IntPtr.Zero );
+			return result.ToArray();
+		}
+
 		internal struct EnumDisplayMonitorResult {
 			//from EnumMonitorsDelegate
 			public IntPtr MonitorHandle { get; set; }	// hMonitor
@@ -68,6 +91,7 @@ namespace KsWare.Windows {
 		internal enum DisplayDeviceStateFlags : int {
 			/// <summary>The device is part of the desktop.</summary>
 			AttachedToDesktop = 0x1,
+
 			MultiDriver = 0x2,
 
 			/// <summary>The device is part of the desktop.</summary>
@@ -124,7 +148,7 @@ namespace KsWare.Windows {
 
 		/// <remarks>https://docs.microsoft.com/en-us/windows/win32/api/shellscalingapi/nf-shellscalingapi-setprocessdpiawareness</remarks>
 		[DllImport("shcore.dll")]
-		private static extern int SetProcessDpiAwareness(IntPtr value);
+		internal static extern int SetProcessDpiAwareness(IntPtr value);
 
 		public static int SetProcessDpiAwareness(PROCESS_DPI_AWARENESS value)
 			=> SetProcessDpiAwareness((IntPtr) value);
@@ -141,11 +165,6 @@ namespace KsWare.Windows {
 		internal static bool AreDpiAwarenessContextsEqual(DPI_AWARENESS_CONTEXT dpiContextA, DPI_AWARENESS_CONTEXT dpiContextB)
 			=> AreDpiAwarenessContextsEqual((IntPtr)dpiContextA, (IntPtr)dpiContextB);
 
-		// #define DPI_AWARENESS_CONTEXT_UNAWARE              ((DPI_AWARENESS_CONTEXT)-1)
-		// #define DPI_AWARENESS_CONTEXT_SYSTEM_AWARE         ((DPI_AWARENESS_CONTEXT)-2)
-		// #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE    ((DPI_AWARENESS_CONTEXT)-3)
-		// #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
-
 		/// <remarks>https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setthreaddpihostingbehavior</remarks>
 		[DllImport("user32.dll")]
 		private static extern IntPtr SetThreadDpiHostingBehavior(IntPtr value);
@@ -155,7 +174,9 @@ namespace KsWare.Windows {
 		/// </summary>
 		/// <param name="value">The new <see cref="DPI_HOSTING_BEHAVIOR"/> value for the current thread.</param>
 		/// <returns>The previous <see cref="DPI_HOSTING_BEHAVIOR"/> for the thread. If the hosting behavior passed in is invalid, the thread will not be updated and the return value will be DPI_HOSTING_BEHAVIOR_INVALID. You can use this value to restore the old DPI_HOSTING_BEHAVIOR after overriding it with a predefined value.</returns>
-		/// <remarks>https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setthreaddpihostingbehavior</remarks>
+		/// <remarks>
+		/// <para>Minimum supported client:	Windows 10, version 1803 [desktop apps only].</para>
+		/// <para>https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setthreaddpihostingbehavior</para></remarks>
 		internal static DPI_HOSTING_BEHAVIOR SetThreadDpiHostingBehavior(DPI_HOSTING_BEHAVIOR value) 
 			=> (DPI_HOSTING_BEHAVIOR) SetThreadDpiHostingBehavior((IntPtr) value);
 
@@ -191,6 +212,25 @@ namespace KsWare.Windows {
 			}
 		}
 
+		[DllImport("User32", SetLastError = true)]
+		[return: MarshalAs(UnmanagedType.Bool)]
+		// https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-logicaltophysicalpointforpermonitordpi
+		// BOOL LogicalToPhysicalPointForPerMonitorDPI([in] HWND hWnd,[in, out] LPPOINT lpPoint);
+		internal static extern bool LogicalToPhysicalPointForPerMonitorDPI(IntPtr hWnd, ref POINT lpPoint);
+
+		[DllImport("User32", SetLastError = true)]
+		[return: MarshalAs(UnmanagedType.Bool)]
+		// https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-physicaltologicalpointforpermonitordpi
+		// BOOL PhysicalToLogicalPointForPerMonitorDPI([in] HWND hWnd,[in, out] LPPOINT lpPoint);
+		internal static extern bool PhysicalToLogicalPointForPerMonitorDPI(IntPtr hWnd, ref POINT lpPoint);
+
+
+		// #define DPI_AWARENESS_CONTEXT_UNAWARE              ((DPI_AWARENESS_CONTEXT)-1)
+		// #define DPI_AWARENESS_CONTEXT_SYSTEM_AWARE         ((DPI_AWARENESS_CONTEXT)-2)
+		// #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE    ((DPI_AWARENESS_CONTEXT)-3)
+		// #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
+		// #define DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED    ((DPI_AWARENESS_CONTEXT)-5)
+
 		internal enum DPI_AWARENESS_CONTEXT : long {
 			UNAWARE = -1,
 			SYSTEM_AWARE = -2,
@@ -216,7 +256,9 @@ namespace KsWare.Windows {
 			INVALID = -1, // DPI_AWARENESS_INVALID
 			UNAWARE = 0,	// DPI_AWARENESS_UNAWARE
 			SYSTEM_AWARE = 1,	// DPI_AWARENESS_SYSTEM_AWARE
-			PER_MONITOR_AWARE = 2 // DPI_AWARENESS_PER_MONITOR_AWARE
+			PER_MONITOR_AWARE = 2, // DPI_AWARENESS_PER_MONITOR_AWARE
+			PER_MONITOR_AWARE_V2 = 3,
+			UNAWARE_GDI_SCALED = 4,
 		}
 
 		internal enum MONITOR_DPI_TYPE /*MONITOR_DPI_TYPE*/ {

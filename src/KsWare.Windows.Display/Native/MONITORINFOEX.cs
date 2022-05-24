@@ -48,6 +48,14 @@ namespace KsWare.Windows {
 			/// </summary>
 			[MarshalAs(UnmanagedType.ByValTStr, SizeConst = CCHDEVICENAME)]
 			public string DeviceName;
+
+
+			public static MONITORINFOEX New() {
+				var mi = new MONITORINFOEX();
+				mi.Size = Marshal.SizeOf(mi);
+				return mi;
+			}
+
 		}
 
 	}
